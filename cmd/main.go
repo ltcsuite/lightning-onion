@@ -10,9 +10,9 @@ import (
 	"os"
 	"strings"
 
-	"github.com/btcsuite/btcd/btcec"
-	"github.com/btcsuite/btcd/chaincfg"
-	sphinx "github.com/lightningnetwork/lightning-onion"
+	sphinx "github.com/ltcsuite/lightning-onion"
+	"github.com/ltcsuite/ltcd/btcec"
+	"github.com/ltcsuite/ltcd/chaincfg"
 )
 
 type OnionHopSpec struct {
