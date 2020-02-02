@@ -134,7 +134,7 @@ func main() {
 
 		privkey, _ := btcec.PrivKeyFromBytes(btcec.S256(), binKey)
 		replayLog := sphinx.NewMemoryReplayLog()
-		s := sphinx.NewRouter(privkey, &chaincfg.TestNet3Params, replayLog)
+		s := sphinx.NewRouter(privkey, &chaincfg.TestNet4Params, replayLog)
 
 		replayLog.Start()
 		defer replayLog.Stop()
