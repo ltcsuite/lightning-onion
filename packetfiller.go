@@ -4,7 +4,7 @@ import (
 	"crypto/rand"
 
 	"github.com/aead/chacha20"
-	"github.com/ltcsuite/ltcd/btcec"
+	"github.com/ltcsuite/ltcd/btcec/v2"
 )
 
 // PacketFiller is a function type to be specified by the caller to provide a

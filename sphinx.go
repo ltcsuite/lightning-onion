@@ -6,11 +6,11 @@ import (
 	"crypto/sha256"
 	"fmt"
 	"io"
-	"math/big"
+	"sync"
 
-	"github.com/ltcsuite/ltcd/btcec"
+	"github.com/ltcsuite/ltcd/btcec/v2"
 	"github.com/ltcsuite/ltcd/chaincfg"
-	"github.com/ltcsuite/ltcutil"
+	"github.com/ltcsuite/ltcd/ltcutil"
 )
 
 const (
@@ -150,29 +150,28 @@ func generateSharedSecrets(paymentPath []*btcec.PublicKey,
 	// c_0 = x. At the beginning of each iteration, the previous blinding
 	// factor is aggregated into the modular product, and used as the scalar
 	// value in deriving the hop ephemeral keys and shared secrets.
-	var cachedBlindingFactor big.Int
-	cachedBlindingFactor.SetBytes(sessionKey.D.Bytes())
+	var cachedBlindingFactor btcec.ModNScalar
+	cachedBlindingFactor.Set(&sessionKey.Key)
 
 	// Now recursively compute the cached blinding factor, ephemeral ECDH
 	// pub keys, and shared secret for each hop.
-	var nextBlindingFactor big.Int
+	var nextBlindingFactor btcec.ModNScalar
 	for i := 1; i <= numHops-1; i++ {
 		// Update the cached blinding factor with b_{i-1}.
-		nextBlindingFactor.SetBytes(lastBlindingFactor[:])
-		cachedBlindingFactor.Mul(&cachedBlindingFactor, &nextBlindingFactor)
-		cachedBlindingFactor.Mod(&cachedBlindingFactor, btcec.S256().Params().N)
+		nextBlindingFactor.Set(&lastBlindingFactor)
+		cachedBlindingFactor.Mul(&nextBlindingFactor)
 
 		// a_i = g ^ c_i
 		//     = g^( x * b_0 * ... * b_{i-1} )
 		//     = X^( b_0 * ... * b_{i-1} )
 		// X_our_session_pub_key x all prev blinding factors
-		lastEphemeralPubKey = blindBaseElement(cachedBlindingFactor.Bytes())
+		lastEphemeralPubKey = blindBaseElement(cachedBlindingFactor)
 
 		// e_i = Y_i ^ c_i
 		//     = ( Y_i ^ x )^( b_0 * ... * b_{i-1} )
 		// (Y_their_pub_key x x_our_priv) x all prev blinding factors
 		hopBlindedPubKey := blindGroupElement(
-			paymentPath[i], cachedBlindingFactor.Bytes(),
+			paymentPath[i], cachedBlindingFactor,
 		)
 
 		// s_i = sha256( e_i )
@@ -402,7 +401,7 @@ func (f *OnionPacket) Decode(r io.Reader) error {
 	if _, err := io.ReadFull(r, ephemeral[:]); err != nil {
 		return err
 	}
-	f.EphemeralKey, err = btcec.ParsePubKey(ephemeral[:], btcec.S256())
+	f.EphemeralKey, err = btcec.ParsePubKey(ephemeral[:])
 	if err != nil {
 		return ErrInvalidOnionKey
 	}
@@ -613,7 +612,7 @@ func unwrapPacket(onionPkt *OnionPacket, sharedSecret *Hash256,
 	// Randomize the DH group element for the next hop using the
 	// deterministic blinding factor.
 	blindingFactor := computeBlindingFactor(dhKey, sharedSecret[:])
-	nextDHKey := blindGroupElement(dhKey, blindingFactor[:])
+	nextDHKey := blindGroupElement(dhKey, blindingFactor)
 
 	// With the MAC checked, and the payload decrypted, we can now parse
 	// out the payload so we can derive the specified forwarding
@@ -701,6 +700,8 @@ type Tx struct {
 	// only be accessed if the index is *not* included in the replay set, or
 	// otherwise failed any other stage of the processing.
 	packets []ProcessedPacket
+
+	sync.Mutex
 }
 
 // BeginTxn creates a new transaction that can later be committed back to the
@@ -750,6 +751,9 @@ func (t *Tx) ProcessOnionPacket(seqNum uint16, onionPkt *OnionPacket,
 	if err != nil {
 		return err
 	}
+
+	t.Lock()
+	defer t.Unlock()
 
 	// Add the hash prefix to pending batch of shared secrets that will be
 	// written later via Commit().
