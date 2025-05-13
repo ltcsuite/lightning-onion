@@ -3,7 +3,7 @@ cache:
   directories:
     - $GOCACHE
     - $GOPATH/pkg/mod
-    - $GOPATH/src/github.com/btcsuite
+    - $GOPATH/src/github.com/ltcsuite
     - $GOPATH/src/github.com/golang
 
 go:
